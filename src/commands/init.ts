@@ -35,6 +35,7 @@ enum PackageManager {
 	NPM = "npm",
 	Yarn = "yarn",
 	PNPM = "pnpm",
+	Bun = "bun",
 }
 
 interface PackageManagerCommands {
@@ -60,6 +61,11 @@ const packageManagerCommands: {
 		init: "pnpm init",
 		devInstall: "pnpm install --silent -D",
 		build: "pnpm run build",
+	},
+	[PackageManager.Bun]: {
+		init: "bun init -y -m",
+		devInstall: "bun install --silent -D",
+		build: "bun run build",
 	},
 };
 
@@ -109,17 +115,27 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 
 	// Although npm is installed by default, it can be uninstalled
 	// and replaced by another manager, so check for it to make sure
-	const [npmAvailable, pnpmAvailable, yarnAvailable, gitAvailable] = (
-		await Promise.allSettled(["npm", "pnpm", "yarn", "git"].map(v => lookpath(v)))
+	const [npmAvailable, pnpmAvailable, yarnAvailable, gitAvailable, bunAvailable] = (
+		await Promise.allSettled(["npm", "pnpm", "yarn", "git", "bun"].map(v => lookpath(v)))
 	).map(v => (v.status === "fulfilled" ? v.value !== undefined : true));
 
-	const packageManagerExistance: { [K in PackageManager]: boolean } = {
+	const packageManagerExistence: { [K in PackageManager]: boolean } = {
 		[PackageManager.NPM]: npmAvailable,
 		[PackageManager.PNPM]: pnpmAvailable,
 		[PackageManager.Yarn]: yarnAvailable,
+		[PackageManager.Bun]: bunAvailable,
 	};
 
-	const packageManagerCount = Object.values(packageManagerExistance).filter(exists => exists).length;
+	// ordering is intentional for --yes users
+	const defaultPackageManager = bunAvailable
+		? PackageManager.Bun
+		: pnpmAvailable
+			? PackageManager.PNPM
+			: yarnAvailable
+				? PackageManager.Yarn
+				: PackageManager.NPM;
+
+	const packageManagerCount = Object.values(packageManagerExistence).filter(exists => exists).length;
 
 	const {
 		template = initMode,
@@ -127,7 +143,7 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 		eslint = argv.eslint ?? argv.yes ?? false,
 		prettier = argv.prettier ?? argv.yes ?? false,
 		vscode = argv.vscode ?? argv.yes ?? false,
-		packageManager = argv.packageManager ?? PackageManager.NPM,
+		packageManager = argv.packageManager ?? defaultPackageManager,
 	}: {
 		template: InitMode;
 		git: boolean;
@@ -177,7 +193,7 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 				name: "packageManager",
 				message: "Multiple package managers detected. Select package manager:",
 				choices: Object.entries(PackageManager)
-					.filter(([, packageManager]) => packageManagerExistance[packageManager])
+					.filter(([, packageManager]) => packageManagerExistence[packageManager])
 					.map(([managerDisplayName, managerEnum]) => ({
 						title: managerDisplayName,
 						value: managerEnum,
@@ -192,7 +208,7 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 		packageLockJson: path.join(cwd, "package-lock.json"),
 		tsconfig: path.join(cwd, "tsconfig.json"),
 		gitignore: path.join(cwd, ".gitignore"),
-		eslintrc: path.join(cwd, ".eslintrc"),
+		eslintrc: path.join(cwd, "eslint.config.ts"),
 		prettierrc: path.join(cwd, ".prettierrc"),
 		settings: path.join(cwd, ".vscode", "settings.json"),
 		extensions: path.join(cwd, ".vscode", "extensions.json"),
@@ -229,6 +245,14 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 			build: "rbxtsc",
 			watch: "rbxtsc -w",
 		};
+		// append lint/formatting commands if specified
+		if (prettier) {
+			pkgJson.scripts["format"] = "prettier --write .";
+			pkgJson.scripts["format:check"] = "prettier .";
+		}
+		if (eslint) {
+			pkgJson.scripts["lint"] = "eslint";
+		}
 		if (template === InitMode.Package) {
 			pkgJson.name = RBXTS_SCOPE + "/" + pkgJson.name;
 			pkgJson.main = "out/init.lua";
@@ -268,10 +292,12 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 
 		if (eslint) {
 			devDependencies.push(
+				"@eslint/eslintrc",
+				"@eslint/js",
+				"typescript-eslint",
 				"eslint",
-				"@typescript-eslint/eslint-plugin",
-				"@typescript-eslint/parser",
 				"eslint-plugin-roblox-ts",
+				"jiti",
 			);
 			if (prettier) {
 				devDependencies.push("eslint-config-prettier", "eslint-plugin-prettier");
@@ -283,32 +309,27 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 
 	if (eslint) {
 		await benchmark("Configuring ESLint..", async () => {
-			const eslintConfig = {
-				parser: "@typescript-eslint/parser",
-				parserOptions: {
-					jsx: true,
-					useJSXTextNode: true,
-					ecmaVersion: 2018,
-					sourceType: "module",
-					project: "./tsconfig.json",
-				},
-				ignorePatterns: ["/out"],
-				plugins: ["@typescript-eslint", "roblox-ts"],
-				extends: [
-					"eslint:recommended",
-					"plugin:@typescript-eslint/recommended",
-					"plugin:roblox-ts/recommended-legacy",
-				],
-				rules: {} as { [index: string]: unknown },
-			};
-
+			const stream: Array<string | undefined> = [
+				'import roblox from "eslint-plugin-roblox-ts";',
+				'import typescript from "typescript-eslint";',
+				'import { defineConfig, globalIgnores } from "eslint/config";',
+				prettier ? 'import prettierRecommended from "eslint-plugin-prettier/recommended";' : undefined,
+				"",
+				"export default defineConfig([",
+				'\tglobalIgnores(["out/"]),',
+				prettier ? "\tprettierRecommended," : undefined,
+				"\ttypescript.configs.recommendedTypeChecked,",
+				"\troblox.parser,",
+				"\t{",
+				"\t\textends: [roblox.configs.recommended],",
+				'\t\tfiles: ["src/**/*.ts", "src/**/*.tsx"],',
+			];
 			if (prettier) {
-				eslintConfig.plugins.push("prettier");
-				eslintConfig.extends.push("plugin:prettier/recommended");
-				eslintConfig.rules["prettier/prettier"] = "warn";
+				stream.push("\t\trules: {", '\t\t\t"prettier/prettier": "warn",', "\t\t},");
 			}
-
-			await fs.outputFile(paths.eslintrc, JSON.stringify(eslintConfig, undefined, "\t"));
+			stream.push("\t},");
+			stream.push("]);");
+			await fs.outputFile(paths.eslintrc, stream.filter(str => str !== undefined).join("\n"));
 		});
 	}
 
@@ -330,9 +351,13 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 				recommendations: ["roblox-ts.vscode-roblox-ts"],
 			};
 			const settings = {
-				"typescript.tsdk": "node_modules/typescript/lib",
+				"js/ts.tsdk.path": "node_modules/typescript/lib",
 				"files.eol": "\n",
 			};
+
+			if (packageManager === PackageManager.Bun) {
+				extensions.recommendations.push("oven.bun-vscode");
+			}
 
 			if (eslint) {
 				extensions.recommendations.push("dbaeumer.vscode-eslint");
