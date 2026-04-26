@@ -198,7 +198,7 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 		packageLockJson: path.join(cwd, "package-lock.json"),
 		tsconfig: path.join(cwd, "tsconfig.json"),
 		gitignore: path.join(cwd, ".gitignore"),
-		eslintrc: path.join(cwd, ".eslintrc"),
+		eslintrc: path.join(cwd, "eslint.config.ts"),
 		prettierrc: path.join(cwd, ".prettierrc"),
 		settings: path.join(cwd, ".vscode", "settings.json"),
 		extensions: path.join(cwd, ".vscode", "extensions.json"),
@@ -282,10 +282,12 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 
 		if (eslint) {
 			devDependencies.push(
+				"@eslint/eslintrc",
+				"@eslint/js",
+				"typescript-eslint",
 				"eslint",
-				"@typescript-eslint/eslint-plugin",
-				"@typescript-eslint/parser",
 				"eslint-plugin-roblox-ts",
+				"jiti",
 			);
 			if (prettier) {
 				devDependencies.push("eslint-config-prettier", "eslint-plugin-prettier");
@@ -297,32 +299,27 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 
 	if (eslint) {
 		await benchmark("Configuring ESLint..", async () => {
-			const eslintConfig = {
-				parser: "@typescript-eslint/parser",
-				parserOptions: {
-					jsx: true,
-					useJSXTextNode: true,
-					ecmaVersion: 2018,
-					sourceType: "module",
-					project: "./tsconfig.json",
-				},
-				ignorePatterns: ["/out"],
-				plugins: ["@typescript-eslint", "roblox-ts"],
-				extends: [
-					"eslint:recommended",
-					"plugin:@typescript-eslint/recommended",
-					"plugin:roblox-ts/recommended-legacy",
-				],
-				rules: {} as { [index: string]: unknown },
-			};
-
+			const stream: Array<string | undefined> = [
+				'import roblox from "eslint-plugin-roblox-ts";',
+				'import typescript from "typescript-eslint";',
+				'import { defineConfig, globalIgnores } from "eslint/config";',
+				prettier ? 'import prettierRecommended from "eslint-plugin-prettier/recommended";' : undefined,
+				"",
+				"export default defineConfig([",
+				'\tglobalIgnores(["out/"]),',
+				prettier ? "\tprettierRecommended," : undefined,
+				"\ttypescript.configs.recommendedTypeChecked,",
+				"\troblox.parser,",
+				"\t{",
+				"\t\textends: [roblox.configs.recommended],",
+				'\t\tfiles: ["src/**/*.ts", "src/**/*.tsx"],',
+			];
 			if (prettier) {
-				eslintConfig.plugins.push("prettier");
-				eslintConfig.extends.push("plugin:prettier/recommended");
-				eslintConfig.rules["prettier/prettier"] = "warn";
+				stream.push("\t\trules: {", '\t\t\t"prettier/prettier": "warn",', "\t\t},");
 			}
-
-			await fs.outputFile(paths.eslintrc, JSON.stringify(eslintConfig, undefined, "\t"));
+			stream.push("\t},");
+			stream.push("]);");
+			await fs.outputFile(paths.eslintrc, stream.filter(str => str !== undefined).join("\n"));
 		});
 	}
 
