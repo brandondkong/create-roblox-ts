@@ -351,7 +351,7 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 				recommendations: ["roblox-ts.vscode-roblox-ts"],
 			};
 			const settings = {
-				"typescript.tsdk": "node_modules/typescript/lib",
+				"js/ts.tsdk.path": "node_modules/typescript/lib",
 				"files.eol": "\n",
 			};
 
