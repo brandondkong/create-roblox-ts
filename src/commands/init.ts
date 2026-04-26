@@ -235,6 +235,14 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 			build: "rbxtsc",
 			watch: "rbxtsc -w",
 		};
+		// append lint/formatting commands if specified
+		if (prettier) {
+			pkgJson.scripts["format"] = "prettier --write .";
+			pkgJson.scripts["format:check"] = "prettier .";
+		}
+		if (eslint) {
+			pkgJson.scripts["lint"] = "eslint";
+		}
 		if (template === InitMode.Package) {
 			pkgJson.name = RBXTS_SCOPE + "/" + pkgJson.name;
 			pkgJson.main = "out/init.lua";
