@@ -35,6 +35,7 @@ enum PackageManager {
 	NPM = "npm",
 	Yarn = "yarn",
 	PNPM = "pnpm",
+	Bun = "bun",
 }
 
 interface PackageManagerCommands {
@@ -60,6 +61,11 @@ const packageManagerCommands: {
 		init: "pnpm init",
 		devInstall: "pnpm install --silent -D",
 		build: "pnpm run build",
+	},
+	[PackageManager.Bun]: {
+		init: "bun init -y -m",
+		devInstall: "bun install --silent -D",
+		build: "bun run build",
 	},
 };
 
@@ -109,21 +115,25 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 
 	// Although npm is installed by default, it can be uninstalled
 	// and replaced by another manager, so check for it to make sure
-	const [npmAvailable, pnpmAvailable, yarnAvailable, gitAvailable] = (
-		await Promise.allSettled(["npm", "pnpm", "yarn", "git"].map(v => lookpath(v)))
+	const [npmAvailable, pnpmAvailable, yarnAvailable, gitAvailable, bunAvailable] = (
+		await Promise.allSettled(["npm", "pnpm", "yarn", "git", "bun"].map(v => lookpath(v)))
 	).map(v => (v.status === "fulfilled" ? v.value !== undefined : true));
 
 	const packageManagerExistence: { [K in PackageManager]: boolean } = {
 		[PackageManager.NPM]: npmAvailable,
 		[PackageManager.PNPM]: pnpmAvailable,
 		[PackageManager.Yarn]: yarnAvailable,
+		[PackageManager.Bun]: bunAvailable,
 	};
 
-	const defaultPackageManager = pnpmAvailable
-		? PackageManager.PNPM
-		: yarnAvailable
-			? PackageManager.Yarn
-			: PackageManager.NPM;
+	// ordering is intentional for --yes users
+	const defaultPackageManager = bunAvailable
+		? PackageManager.Bun
+		: pnpmAvailable
+			? PackageManager.PNPM
+			: yarnAvailable
+				? PackageManager.Yarn
+				: PackageManager.NPM;
 
 	const packageManagerCount = Object.values(packageManagerExistence).filter(exists => exists).length;
 
@@ -339,6 +349,10 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 				"typescript.tsdk": "node_modules/typescript/lib",
 				"files.eol": "\n",
 			};
+
+			if (packageManager === PackageManager.Bun) {
+				extensions.recommendations.push("oven.bun-vscode");
+			}
 
 			if (eslint) {
 				extensions.recommendations.push("dbaeumer.vscode-eslint");
