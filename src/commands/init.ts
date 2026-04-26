@@ -113,13 +113,19 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 		await Promise.allSettled(["npm", "pnpm", "yarn", "git"].map(v => lookpath(v)))
 	).map(v => (v.status === "fulfilled" ? v.value !== undefined : true));
 
-	const packageManagerExistance: { [K in PackageManager]: boolean } = {
+	const packageManagerExistence: { [K in PackageManager]: boolean } = {
 		[PackageManager.NPM]: npmAvailable,
 		[PackageManager.PNPM]: pnpmAvailable,
 		[PackageManager.Yarn]: yarnAvailable,
 	};
 
-	const packageManagerCount = Object.values(packageManagerExistance).filter(exists => exists).length;
+	const defaultPackageManager = pnpmAvailable
+		? PackageManager.PNPM
+		: yarnAvailable
+			? PackageManager.Yarn
+			: PackageManager.NPM;
+
+	const packageManagerCount = Object.values(packageManagerExistence).filter(exists => exists).length;
 
 	const {
 		template = initMode,
@@ -127,7 +133,7 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 		eslint = argv.eslint ?? argv.yes ?? false,
 		prettier = argv.prettier ?? argv.yes ?? false,
 		vscode = argv.vscode ?? argv.yes ?? false,
-		packageManager = argv.packageManager ?? PackageManager.NPM,
+		packageManager = argv.packageManager ?? defaultPackageManager,
 	}: {
 		template: InitMode;
 		git: boolean;
@@ -177,7 +183,7 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 				name: "packageManager",
 				message: "Multiple package managers detected. Select package manager:",
 				choices: Object.entries(PackageManager)
-					.filter(([, packageManager]) => packageManagerExistance[packageManager])
+					.filter(([, packageManager]) => packageManagerExistence[packageManager])
 					.map(([managerDisplayName, managerEnum]) => ({
 						title: managerDisplayName,
 						value: managerEnum,
