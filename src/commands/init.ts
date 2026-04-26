@@ -308,10 +308,9 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 				"export default defineConfig([",
 				'\tglobalIgnores(["out/"]),',
 				prettier ? "\tprettierRecommended," : undefined,
-				"\ttypescript.configs.recommendedTypeChecked,",
 				"\troblox.parser,",
 				"\t{",
-				"\t\textends: [roblox.configs.recommended],",
+				"\t\textends: [roblox.configs.recommended, ...typescript.configs.recommendedTypeChecked],",
 				'\t\tfiles: ["src/**/*.ts", "src/**/*.tsx"],',
 			];
 			if (prettier) {
