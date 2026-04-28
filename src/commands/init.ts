@@ -312,10 +312,13 @@ async function init(argv: yargs.Arguments<InitOptions>, initMode: InitMode) {
 				"\t{",
 				"\t\textends: [roblox.configs.recommended, ...typescript.configs.recommendedTypeChecked],",
 				'\t\tfiles: ["src/**/*.ts", "src/**/*.tsx"],',
+				"\t\trules: {",
+				'\t\t\t"@typescript-eslint/only-throw-error": "off",',
 			];
 			if (prettier) {
-				stream.push("\t\trules: {", '\t\t\t"prettier/prettier": "warn",', "\t\t},");
+				stream.push('\t\t\t"prettier/prettier": "warn",');
 			}
+			stream.push("\t\t},");
 			stream.push("\t},");
 			stream.push("]);");
 			await fs.outputFile(paths.eslintrc, stream.filter(str => str !== undefined).join("\n"));
